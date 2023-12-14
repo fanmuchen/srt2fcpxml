@@ -17,39 +17,42 @@ import (
 )
 
 func Srt2FcpXmlExport(projectName string, frameDuration interface{}, subtitles *astisub.Subtitles, width, height int) ([]byte, error) {
-	fcpxml := FcpXML.New()
-	res := Resources.NewResources()
-	res.SetEffect(Resources.NewEffect())
-	format := Resources.NewFormat().
-		SetWidth(width).
-		SetHeight(height).
-		SetFrameRate(frameDuration).Render()
-	res.SetFormat(format)
-	fcpxml.SetResources(res)
-	gap := Gap.NewGap(subtitles.Duration().Seconds())
+    fcpxml := FcpXML.New()
+    res := Resources.NewResources()
+    res.SetEffect(Resources.NewEffect())
+    format := Resources.NewFormat().
+        SetWidth(width).
+        SetHeight(height).
+        SetFrameRate(frameDuration).Render()
+    res.SetFormat(format)
+    fcpxml.SetResources(res)
 
-	for index, item := range subtitles.Items {
-		textStyleDef := Title.NewTextStyleDef(index + 1)
-		text := Title.NewContent(index+1, func(lines []astisub.Line) string {
-			var os []string
-			for _, l := range lines {
-				os = append(os, l.String())
-			}
-			return strings.Join(os, "\n")
-		}(item.Lines))
-		title := Title.NewTitle(item.String(), item.StartAt.Seconds(), item.EndAt.Seconds()).SetTextStyleDef(textStyleDef).SetText(text)
-		title.AddParam(Title.NewParams("Position", "9999/999166631/999166633/1/100/101", "0 -450"))
-		title.AddParam(Title.NewParams("Alignment", "9999/999166631/999166633/2/354/999169573/401", "1 (Center)"))
-		title.AddParam(Title.NewParams("Flatten", "9999/999166631/999166633/2/351", "1"))
-		gap.AddTitle(title)
-	}
+    // Create a blank title for the entire timeline
+    blankTitle := Title.NewTitle("Blank Title", 0, subtitles.Duration().Seconds())
 
-	spine := Spine.NewSpine().SetGap(gap)
-	seq := Sequence.NewSequence(subtitles.Duration().Seconds()).SetSpine(spine)
-	project := Project.NewProject(projectName).SetSequence(seq)
-	event := Event.NewEvent().SetProject(project)
-	library := Library.NewLibrary(projectName).SetEvent(event)
-	fcpxml.SetLibrary(library)
+    for index, item := range subtitles.Items {
+        // Create a new Title for each subtitle
+        textStyleDef := Title.NewTextStyleDef(index + 1)
+        text := Title.NewContent(index+1, func(lines []astisub.Line) string {
+            var os []string
+            for _, l := range lines {
+                os = append(os, l.String())
+            }
+            return strings.Join(os, "\n")
+        }(item.Lines))
+        subtitle := Title.NewTitle(item.String(), item.StartAt.Seconds(), item.EndAt.Seconds()).SetTextStyleDef(textStyleDef).SetText(text)
 
-	return xml.MarshalIndent(fcpxml, "", "    ")
+        // Add subtitles as child elements to the blank title
+        blankTitle.AddTitle(subtitle)
+    }
+
+    // Create spine and attach the blank title to it
+    spine := Spine.NewSpine().AddTitle(blankTitle)
+    seq := Sequence.NewSequence(subtitles.Duration().Seconds()).SetSpine(spine)
+    project := Project.NewProject(projectName).SetSequence(seq)
+    event := Event.NewEvent().SetProject(project)
+    library := Library.NewLibrary(projectName).SetEvent(event)
+    fcpxml.SetLibrary(library)
+
+    return xml.MarshalIndent(fcpxml, "", "    ")
 }
